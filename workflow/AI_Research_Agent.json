@@ -1,0 +1,391 @@
+{
+  "name": "AI Research Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "id": "b2edf098-a08b-4311-acd1-c35b26a062b6",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        304
+      ],
+      "webhookId": "9e49aeb0-ed60-422a-8555-ad93d3a3dab4"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "topic-assignment",
+              "name": "topic",
+              "value": "={{ ($json.chatInput || \"\").toString().trim() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "372012ec-4055-4fcb-a32a-ab3318f49b0d",
+      "name": "Extract Topic",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "topic-not-empty",
+              "leftValue": "={{ $json.topic }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e73a155e-023f-41d7-a7ef-90b2ad76fdb7",
+      "name": "Has Topic?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.topic, search_depth: \"advanced\", max_results: 8, include_answer: true, topic: \"general\" }) }}",
+        "options": {
+          "response": {
+            "response": {}
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "58719452-fbbb-4836-a858-d87adf7de0f8",
+      "name": "Tavily Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        672,
+        208
+      ],
+      "credentials": {
+        "httpTemplatedCustomAuth": {
+          "id": "z82GIRdERVDptVD9",
+          "name": "Tavily API (Shreesh)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const LF = String.fromCharCode(10);\nconst allItems = $input.all();\nconst body = (allItems[0] && allItems[0].json) ? allItems[0].json : {};\nconst results = Array.isArray(body.results) ? body.results : [];\nconst answer = body.answer || \"\";\nlet topic = \"\";\ntry { topic = $(\"Extract Topic\").item.json.topic || \"\"; } catch (e) { topic = body.query || \"\"; }\n\nconst blocks = results.map(function (r, i) {\n  const title = r.title || \"Untitled source\";\n  const url = r.url || \"\";\n  const content = (r.content || \"\").toString();\n  return (i + 1) + \". \" + title + LF + \"URL: \" + url + LF + \"Excerpt: \" + content;\n});\n\nconst sourcesText = blocks.length ? blocks.join(LF + LF) : \"No sources were returned.\";\nconst sourceList = results.map(function (r) {\n  return { title: r.title || \"Untitled source\", url: r.url || \"\" };\n});\n\nreturn [{ json: { topic: topic, answer: answer, sourcesText: sourcesText, sourceList: sourceList } }];"
+      },
+      "id": "41be6e3b-4e60-4c6d-87f5-bf591e68c50a",
+      "name": "Process Search Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Research topic: {{ $json.topic }}\n\nTavily quick answer: {{ $json.answer }}\n\nWeb search sources:\n{{ $json.sourcesText }}\n\nUsing ONLY the information in these sources, write a complete structured research report on the topic. Do not copy the sources verbatim — synthesize and analyze them.",
+        "options": {
+          "systemMessage": "You are an expert research analyst. You are given a research topic and a set of web search sources.\nAnalyze and synthesize the sources into an original, well-structured research report. Never simply copy or paste source text.\n\nProduce the report in clean Markdown using EXACTLY these sections and headings, in this order:\n# <Research Title>\n## Executive Summary\n## Introduction\n## Key Findings (use a bulleted list)\n## Detailed Analysis\n## Important Facts (use a bulleted list)\n## Sources / References (list each source title with its URL)\n## Conclusion\n\nBe factual, cite sources where relevant, and keep the writing professional and objective.",
+          "enableStreaming": false
+        }
+      },
+      "id": "d79df472-810c-4405-af71-405f79a8cc19",
+      "name": "Research Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1120,
+        112
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "maxTokensToSample": 4096,
+          "temperature": 0.3
+        }
+      },
+      "id": "01b178cc-a341-4158-9bbd-920048dca9cf",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        336
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "hh0wQb2jXP2YiEwv",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const LF = String.fromCharCode(10);\nconst report = ($input.first().json.output || \"\").toString();\nlet topic = \"Research Report\";\ntry { topic = $(\"Extract Topic\").item.json.topic || topic; } catch (e) {}\n\nfunction esc(s) {\n  return String(s)\n    .replace(/&/g, \"&amp;\")\n    .replace(/</g, \"&lt;\")\n    .replace(/>/g, \"&gt;\");\n}\nfunction inline(s) {\n  let t = esc(s);\n  t = t.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^)]+)\\)/g, '<a href=\"$2\" target=\"_blank\">$1</a>');\n  t = t.replace(/\\*\\*([^*]+)\\*\\*/g, \"<strong>$1</strong>\");\n  t = t.replace(/\\*([^*]+)\\*/g, \"<em>$1</em>\");\n  return t;\n}\n\nconst lines = report.split(/\\r?\\n/);\nconst parts = [];\nlet inList = false;\nfunction closeList() { if (inList) { parts.push(\"</ul>\"); inList = false; } }\n\nfor (let i = 0; i < lines.length; i++) {\n  const raw = lines[i];\n  const line = raw.trim();\n  if (!line) { closeList(); continue; }\n  const h = line.match(/^(#{1,6})\\s+(.*)$/);\n  if (h) {\n    closeList();\n    const level = h[1].length;\n    parts.push(\"<h\" + level + \">\" + inline(h[2]) + \"</h\" + level + \">\");\n    continue;\n  }\n  const li = line.match(/^[-*]\\s+(.*)$/);\n  if (li) {\n    if (!inList) { parts.push(\"<ul>\"); inList = true; }\n    parts.push(\"<li>\" + inline(li[1]) + \"</li>\");\n    continue;\n  }\n  closeList();\n  parts.push(\"<p>\" + inline(line) + \"</p>\");\n}\ncloseList();\n\nconst styleParts = [\n  \"body{font-family:Segoe UI,Arial,sans-serif;line-height:1.6;color:#1a1a1a;background:#f4f6f8;margin:0;padding:40px;}\",\n  \".report{max-width:860px;margin:0 auto;background:#fff;padding:48px 56px;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.08);}\",\n  \"h1{font-size:30px;color:#0b3d91;border-bottom:3px solid #0b3d91;padding-bottom:12px;margin-top:0;}\",\n  \"h2{font-size:21px;color:#0b3d91;margin-top:32px;border-left:4px solid #0b3d91;padding-left:12px;}\",\n  \"h3{font-size:17px;color:#333;}\",\n  \"p{margin:12px 0;}\",\n  \"ul{margin:12px 0 12px 24px;}\",\n  \"li{margin:6px 0;}\",\n  \"a{color:#0b5cff;text-decoration:none;}\",\n  \"a:hover{text-decoration:underline;}\",\n  \".footer{margin-top:40px;padding-top:16px;border-top:1px solid #e0e0e0;font-size:12px;color:#888;text-align:center;}\",\n];\nconst style = styleParts.join(LF);\n\nconst generatedOn = new Date().toISOString().slice(0, 10);\nconst html = [\n  \"<!DOCTYPE html>\",\n  '<html lang=\"en\">',\n  \"<head>\",\n  '<meta charset=\"UTF-8\">',\n  '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">',\n  \"<title>\" + esc(topic) + \" - Research Report</title>\",\n  \"<style>\" + style + \"</style>\",\n  \"</head>\",\n  \"<body>\",\n  '<div class=\"report\">',\n  parts.join(LF),\n  '<div class=\"footer\">Generated by AI Research Agent on ' + generatedOn + \"</div>\",\n  \"</div>\",\n  \"</body>\",\n  \"</html>\",\n].join(LF);\n\nreturn [{ json: { output: html, html: html, topic: topic } }];"
+      },
+      "id": "b1e304d7-ed15-476e-a99e-a0e8f5d4d972",
+      "name": "Generate HTML Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "search-error-msg",
+              "name": "output",
+              "value": "The web search request failed. Please check the Tavily API credential and try again later.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e494b4d5-d8c3-4527-bd15-1e9eb84faf6e",
+      "name": "Search Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        896,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ai-error-msg",
+              "name": "output",
+              "value": "The AI model failed to generate the research report. Please check the Groq credential and try again.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "35f83456-c51b-4dbe-8796-4757b18ffc4c",
+      "name": "AI Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1472,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "missing-topic-msg",
+              "name": "output",
+              "value": "No research topic was provided. Please send a topic you would like me to research.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7df9b633-293e-41dd-92e8-4ec16295e9c4",
+      "name": "Missing Topic Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        672,
+        400
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Topic": {
+      "main": [
+        [
+          {
+            "node": "Has Topic?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Topic?": {
+      "main": [
+        [
+          {
+            "node": "Tavily Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Missing Topic Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tavily Search": {
+      "main": [
+        [
+          {
+            "node": "Process Search Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Search Results": {
+      "main": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Agent": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "370e1dfe-3cfa-45b6-97b7-7ef8a15adc64",
+  "meta": {
+    "instanceId": "fc30fc07e6e561e81106c44408b43e8a27844c9fb1ab74645f287a77102d9bb7"
+  },
+  "nodeGroups": [
+    {
+      "id": "74d24a9c-88ff-4626-9ff5-6fbb646262c7",
+      "name": "Validate topic",
+      "nodeIds": [
+        "372012ec-4055-4fcb-a32a-ab3318f49b0d",
+        "e73a155e-023f-41d7-a7ef-90b2ad76fdb7"
+      ],
+      "description": "Reads the chat message, stores the research topic, and routes to research or a missing-topic reply."
+    },
+    {
+      "id": "7c540787-f794-45f4-b138-f4c13848ed6e",
+      "name": "Search the web",
+      "nodeIds": [
+        "58719452-fbbb-4836-a858-d87adf7de0f8",
+        "e494b4d5-d8c3-4527-bd15-1e9eb84faf6e",
+        "41be6e3b-4e60-4c6d-87f5-bf591e68c50a"
+      ],
+      "description": "Queries the Tavily web search API for the topic and organizes the returned sources for analysis."
+    },
+    {
+      "id": "520f39fe-fe51-4e9e-aa18-24d328b054b8",
+      "name": "Generate report",
+      "nodeIds": [
+        "d79df472-810c-4405-af71-405f79a8cc19",
+        "01b178cc-a341-4158-9bbd-920048dca9cf",
+        "35f83456-c51b-4dbe-8796-4757b18ffc4c",
+        "b1e304d7-ed15-476e-a99e-a0e8f5d4d972"
+      ],
+      "description": "The Groq-powered agent synthesizes the sources into a structured report, then it is rendered as browser-ready HTML."
+    }
+  ],
+  "id": "dZm9WZ4fzs0JLgUq",
+  "tags": []
+}
