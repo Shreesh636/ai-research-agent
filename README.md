@@ -2,7 +2,8 @@
 
 An n8n-based AI automation workflow that accepts a research topic from a user, searches the live web via the Tavily Search API, analyzes and synthesizes the results using a Groq-hosted LLM, and returns a structured, professionally styled HTML research report.
 
-[GitHub Repository URL — add after creating the repository]
+GitHub Repository:
+https://github.com/Shreesh636/ai-research-agent
 [Live n8n Workflow URL — keep private if your n8n instance is not intended for public sharing]
 
 ---
